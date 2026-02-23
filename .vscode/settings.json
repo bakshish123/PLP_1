@@ -1,0 +1,9 @@
+{
+    "java.project.sourcePaths": [
+        "."
+    ],
+    "java.project.referencedLibraries": [
+        "lib/antlr-runtime-4.13.2.jar",
+        "/Users/singh/PLP_1/lib/antlr-runtime-4.13.2.jar"
+    ]
+}
