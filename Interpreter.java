@@ -8,6 +8,7 @@ public class Interpreter extends delphiBaseVisitor<Object> {
     private Map<String, Object> globals = new HashMap<>();
 
     private ClassSymbol currentClass = null;
+    private boolean currentVisibilityPrivate = false;
     private ObjectInstance currentObject = null;
 
     private Scanner scanner = new Scanner(System.in);
@@ -26,12 +27,30 @@ public class Interpreter extends delphiBaseVisitor<Object> {
             classes.put(className, classSymbol);
 
             currentClass = classSymbol;
-
             System.out.println("Class defined: " + className);
 
             visit(ctx.classType());
 
             currentClass = null;
+        }
+
+        return null;
+    }
+
+    // =====================================================
+    // VISIBILITY SECTION
+    // =====================================================
+    @Override
+    public Object visitVisibilitySection(delphiParser.VisibilitySectionContext ctx) {
+
+        if (ctx.PUBLIC() != null) {
+            currentVisibilityPrivate = false;
+        } else if (ctx.PRIVATE() != null) {
+            currentVisibilityPrivate = true;
+        }
+
+        for (delphiParser.ClassMemberContext member : ctx.classMember()) {
+            visit(member);
         }
 
         return null;
@@ -45,7 +64,6 @@ public class Interpreter extends delphiBaseVisitor<Object> {
 
         if (currentClass != null) {
             currentClass.setConstructor(ctx.block());
-            System.out.println("  Constructor registered for class " + currentClass.getName());
         }
 
         return null;
@@ -59,7 +77,6 @@ public class Interpreter extends delphiBaseVisitor<Object> {
 
         if (currentClass != null) {
             currentClass.setDestructor(ctx.block());
-            System.out.println("  Destructor registered for class " + currentClass.getName());
         }
 
         return null;
@@ -78,14 +95,18 @@ public class Interpreter extends delphiBaseVisitor<Object> {
             String varName = id.getText();
 
             if (currentClass != null) {
-                currentClass.addField(varName, typeName);
-                System.out.println("  Field added: " + varName + " : " + typeName);
+
+                currentClass.addField(varName, typeName, currentVisibilityPrivate);
+
+                System.out.println("  Field added: " + varName + " : " + typeName
+                        + (currentVisibilityPrivate ? " (PRIVATE)" : " (PUBLIC)"));
+
             } else {
 
                 if (classes.containsKey(typeName)) {
-                    globals.put(varName, null); // object reference
+                    globals.put(varName, null);
                 } else {
-                    globals.put(varName, 0); // default integer
+                    globals.put(varName, 0);
                 }
 
                 System.out.println("Variable declared: " + varName);
@@ -96,16 +117,13 @@ public class Interpreter extends delphiBaseVisitor<Object> {
     }
 
     // =====================================================
-    // PROCEDURE STATEMENT (Handles writeln & readln)
+    // PROCEDURE STATEMENT (writeln / readln)
     // =====================================================
     @Override
     public Object visitProcedureStatement(delphiParser.ProcedureStatementContext ctx) {
 
         String name = ctx.identifier().getText();
 
-        // -------------------------
-        // WRITELN
-        // -------------------------
         if (name.equalsIgnoreCase("writeln")) {
 
             if (ctx.parameterList() != null) {
@@ -118,13 +136,9 @@ public class Interpreter extends delphiBaseVisitor<Object> {
             return null;
         }
 
-        // -------------------------
-        // READLN
-        // -------------------------
         if (name.equalsIgnoreCase("readln")) {
 
             if (ctx.parameterList() != null) {
-
                 String varName =
                         ctx.parameterList().actualParameter(0).expression().getText();
 
@@ -166,82 +180,73 @@ public class Interpreter extends delphiBaseVisitor<Object> {
                 throw new RuntimeException("Object '" + objectName + "' is null");
             }
 
+            // ENCAPSULATION CHECK
+            if (!objectName.equalsIgnoreCase("Self")) {
+                if (obj.getClassSymbol().isFieldPrivate(fieldName)) {
+                    throw new RuntimeException(
+                            "Cannot access PRIVATE field '" + fieldName + "' from outside class"
+                    );
+                }
+            }
+
             Object value = visit(ctx.expression());
             obj.setField(fieldName, value);
 
             return null;
         }
 
-        // -----------------------------------------
-        // SIMPLE VARIABLE
-        // -----------------------------------------
-        String varName = varCtx.identifier(0).getText();
-        String exprText = ctx.expression().getText();
+// -----------------------------------------
+// SIMPLE VARIABLE
+// -----------------------------------------
+String varName = varCtx.identifier(0).getText();
+String exprText = ctx.expression().getText();
 
-        // -----------------------------------------
-        // CONSTRUCTOR CALL (p := Person.Create)
-        // -----------------------------------------
-        if (exprText.contains(".")) {
+// -----------------------------------------
+// CONSTRUCTOR CALL (p := Person.Create)
+// -----------------------------------------
+if (exprText.contains(".")) {
 
-            String[] parts = exprText.split("\\.");
+    String[] parts = exprText.split("\\.");
 
-            if (parts.length == 2) {
+    if (parts.length == 2) {
 
-                String className = parts[0];
-                String methodName = parts[1];
+        String className = parts[0];
+        String methodName = parts[1];
 
-                if (methodName.equalsIgnoreCase("create")
-                        && classes.containsKey(className)) {
+        if (methodName.equalsIgnoreCase("Create")
+                && classes.containsKey(className)) {
 
-                    ClassSymbol classSymbol = classes.get(className);
+            ClassSymbol classSymbol = classes.get(className);
 
-                    // Run destructor if object already exists
-                    Object existing = globals.get(varName);
-                    if (existing instanceof ObjectInstance) {
+            // Create new object
+            ObjectInstance obj = new ObjectInstance(classSymbol);
+            globals.put(varName, obj);
 
-                        ObjectInstance oldObj = (ObjectInstance) existing;
-                        ClassSymbol oldClass = oldObj.getClassSymbol();
+            System.out.println("Object created: " + varName + " of class " + className);
 
-                        if (oldClass.getDestructorBlock() != null) {
+            // Run constructor
+            if (classSymbol.getConstructorBlock() != null) {
 
-                            ObjectInstance previousObject = currentObject;
-                            currentObject = oldObj;
+                ObjectInstance previousObject = currentObject;
+                currentObject = obj;
 
-                            visit(oldClass.getDestructorBlock());
+                visit(classSymbol.getConstructorBlock());
 
-                            currentObject = previousObject;
-                        }
-                    }
-
-                    // Create new object
-                    ObjectInstance obj = new ObjectInstance(classSymbol);
-                    globals.put(varName, obj);
-
-                    System.out.println("Object created: " + varName + " of class " + className);
-
-                    // Run constructor
-                    if (classSymbol.getConstructorBlock() != null) {
-
-                        ObjectInstance previousObject = currentObject;
-                        currentObject = obj;
-
-                        visit(classSymbol.getConstructorBlock());
-
-                        currentObject = previousObject;
-                    }
-
-                    return null;
-                }
+                currentObject = previousObject;
             }
+
+            return null;
         }
+    }
+}
 
-        // -----------------------------------------
-        // NORMAL ASSIGNMENT
-        // -----------------------------------------
-        Object value = visit(ctx.expression());
-        globals.put(varName, value);
+// -----------------------------------------
+// NORMAL ASSIGNMENT
+// -----------------------------------------
+Object value = visit(ctx.expression());
+globals.put(varName, value);
 
-        return null;
+return null;
     }
 
     // =====================================================
@@ -265,6 +270,15 @@ public class Interpreter extends delphiBaseVisitor<Object> {
 
             if (obj == null) {
                 throw new RuntimeException("Object '" + objectName + "' is null");
+            }
+
+            // ENCAPSULATION CHECK
+            if (!objectName.equalsIgnoreCase("Self")) {
+                if (obj.getClassSymbol().isFieldPrivate(fieldName)) {
+                    throw new RuntimeException(
+                            "Cannot access PRIVATE field '" + fieldName + "' from outside class"
+                    );
+                }
             }
 
             return obj.getField(fieldName);

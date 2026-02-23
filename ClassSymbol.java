@@ -6,6 +6,7 @@ public class ClassSymbol {
     private String name;
 
     private Map<String, String> fields = new HashMap<>();
+    private Map<String, Boolean> fieldVisibility = new HashMap<>();
 
     private delphiParser.BlockContext constructorBlock = null;
     private delphiParser.BlockContext destructorBlock = null;
@@ -22,23 +23,25 @@ public class ClassSymbol {
         return fields;
     }
 
-    public delphiParser.BlockContext getConstructorBlock() {
-        return constructorBlock;
-    }
-
-    public delphiParser.BlockContext getDestructorBlock() {
-        return destructorBlock;
-    }
-
-    public void addField(String fieldName, String type) {
+    // =====================================================
+    // FIELD REGISTRATION WITH VISIBILITY
+    // =====================================================
+    public void addField(String fieldName, String type, boolean isPrivate) {
         fields.put(fieldName, type);
-        System.out.println("  Field added: " + fieldName + " : " + type);
+        fieldVisibility.put(fieldName, isPrivate);
     }
 
     public boolean hasField(String fieldName) {
         return fields.containsKey(fieldName);
     }
 
+    public boolean isFieldPrivate(String fieldName) {
+        return fieldVisibility.getOrDefault(fieldName, false);
+    }
+
+    // =====================================================
+    // CONSTRUCTOR / DESTRUCTOR
+    // =====================================================
     public void setConstructor(delphiParser.BlockContext block) {
         this.constructorBlock = block;
         System.out.println("  Constructor registered for class " + name);
@@ -47,5 +50,13 @@ public class ClassSymbol {
     public void setDestructor(delphiParser.BlockContext block) {
         this.destructorBlock = block;
         System.out.println("  Destructor registered for class " + name);
+    }
+
+    public delphiParser.BlockContext getConstructorBlock() {
+        return constructorBlock;
+    }
+
+    public delphiParser.BlockContext getDestructorBlock() {
+        return destructorBlock;
     }
 }

@@ -160,11 +160,11 @@ methodDeclaration
     ;
 
 constructorDeclaration
-    : CONSTRUCTOR identifier SEMI block SEMI
+    : CONSTRUCTOR identifier (DOT identifier)? SEMI block SEMI
     ;    
 
 destructorDeclaration
-    : DESTRUCTOR identifier SEMI block SEMI
+    : DESTRUCTOR identifier (DOT identifier)? SEMI block SEMI
     ;
 
 functionType
